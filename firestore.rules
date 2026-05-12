@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function canAccessCollection(collectionData) {
+      return collectionData.isPublic == true || 
+             isSignedIn() && (request.auth.uid == collectionData.ownerId || request.auth.uid in collectionData.collaborators);
+    }
+
+    function canWriteCollection(collectionData) {
+      return isSignedIn() && (request.auth.uid == collectionData.ownerId || request.auth.uid in collectionData.collaborators);
+    }
+
+    // Entity Validation: Collection
+    function isValidCollection(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'collaborators', 'isPublic', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.ownerId == request.auth.uid &&
+             data.collaborators is list &&
+             data.isPublic is bool &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Entity Validation: SocialLink
+    function isValidSocialLink(data) {
+      return data.keys().hasAll(['url', 'platform', 'collectionId', 'userId', 'createdAt', 'updatedAt']) &&
+             data.url is string && data.url.size() > 0 && data.url.size() <= 2048 &&
+             data.platform is string && data.platform.size() <= 50 &&
+             data.collectionId is string &&
+             data.userId == request.auth.uid &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 500)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
+             (!('tags' in data) || (data.tags is list)) &&
+             (!('contentType' in data) || (data.contentType is string)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Entity Validation: History
+    function isValidHistory(data) {
+      return data.keys().hasAll(['userId', 'linkId', 'action', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.linkId is string &&
+             data.action in ['added', 'viewed', 'clicked'] &&
+             data.timestamp is timestamp &&
+             (!('linkTitle' in data) || (data.linkTitle is string && data.linkTitle.size() <= 500));
+    }
+
+    // --- Collections ---
+
+    match /collections/{collectionId} {
+      allow get: if isValidId(collectionId) && canAccessCollection(existing());
+      allow list: if isSignedIn(); // We rely on query filters for list
+      
+      allow create: if isSignedIn() && 
+                      isValidId(collectionId) && 
+                      isValidCollection(incoming()) && 
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+      
+      allow update: if canWriteCollection(existing()) && 
+                      isValidCollection(incoming()) &&
+                      incoming().ownerId == existing().ownerId &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time;
+      
+      allow delete: if isSignedIn() && request.auth.uid == existing().ownerId;
+    }
+
+    match /links/{linkId} {
+      allow get: if canAccessCollection(get(/databases/$(database)/documents/collections/$(existing().collectionId)).data);
+      allow list: if isSignedIn(); // Filtered by collectionId in app
+      
+      allow create: if isSignedIn() && 
+                      isValidId(linkId) && 
+                      isValidSocialLink(incoming()) && 
+                      canWriteCollection(get(/databases/$(database)/documents/collections/$(incoming().collectionId)).data) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+      
+      allow update: if canWriteCollection(get(/databases/$(database)/documents/collections/$(existing().collectionId)).data) && 
+                      isValidSocialLink(incoming()) &&
+                      incoming().collectionId == existing().collectionId &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time;
+                      
+      allow delete: if canWriteCollection(get(/databases/$(database)/documents/collections/$(existing().collectionId)).data);
+    }
+
+    match /history/{historyId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && 
+                      isValidId(historyId) && 
+                      isValidHistory(incoming()) && 
+                      incoming().timestamp == request.time;
+    }
+  }
+}

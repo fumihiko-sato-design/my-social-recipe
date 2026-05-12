@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "Collection": {
+      "title": "Collection",
+      "description": "A group of social links with sharing settings",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Collection name" },
+        "ownerId": { "type": "string", "description": "Owner UID" },
+        "collaborators": { "type": "array", "items": { "type": "string" }, "description": "List of collaborator UIDs" },
+        "isPublic": { "type": "boolean", "description": "If the collection is publicly viewable" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "collaborators", "isPublic", "createdAt", "updatedAt"]
+    },
+    "SocialLink": {
+      "title": "Social Link",
+      "description": "A saved social media link with metadata",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "The full link URL" },
+        "platform": { "type": "string", "description": "Platform name (e.g., facebook, tiktok)" },
+        "title": { "type": "string", "description": "Custom title for the link" },
+        "notes": { "type": "string", "description": "Additional notes about the link" },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "AI generated tags" },
+        "contentType": { "type": "string", "description": "Type of content (news, video, etc)" },
+        "collectionId": { "type": "string", "description": "Reference to parent collection" },
+        "userId": { "type": "string", "description": "The UID of the creator" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url", "platform", "collectionId", "userId", "createdAt", "updatedAt"]
+    },
+    "History": {
+      "title": "History",
+      "description": "Log of user actions on links",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The user who performed the action" },
+        "linkId": { "type": "string", "description": "The link associated" },
+        "action": { "type": "string", "enum": ["added", "viewed", "clicked"], "description": "The type of action" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "linkId", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/collections/{collectionId}": {
+      "schema": "Collection",
+      "description": "Groups of links"
+    },
+    "/links/{linkId}": {
+      "schema": "SocialLink",
+      "description": "User saved social links"
+    },
+    "/history/{historyId}": {
+      "schema": "History",
+      "description": "User action logs"
+    }
+  }
+}
